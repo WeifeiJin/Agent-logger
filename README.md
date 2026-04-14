@@ -1,40 +1,44 @@
-# Agent Logger
+# agent-logger
 
 `agent-logger` is a local trace capture tool for coding agents.
 
-It is designed for benchmark construction and post-hoc analysis, not for hidden instrumentation inside the model runtime. The tool records observable evidence only:
+It records observable runtime evidence for agent sessions and stores it on disk in a stable session layout. The primary use case is evaluation and benchmark construction, especially when you need more than a plain transcript:
 
-- user input
+- user messages
 - provider requests and responses
 - assistant output
 - tool call requests and results
-- local runtime artifacts such as Codex rollout events
-- sub-agent orchestration events when the runtime exposes them
+- runtime-level events exposed by the agent
+- derived review artifacts for human inspection
 
-Current first-class support is for Codex. The generic launcher and proxy also make it usable as a wrapper around other local agent CLIs.
+Current first-class runtime support is for Codex. The generic launcher and proxy also make it usable as a wrapper around other local agent CLIs.
 
-## Why This Exists
+## What It Is For
 
-For agent evaluation work, the hard part is usually not generating a transcript. The hard part is preserving the evidence chain around each action:
+`agent-logger` is useful when you need to answer questions like:
 
-- what the user actually asked
-- what the model saw in prompt context
-- what tools were invoked
-- what external outputs may have influenced later behavior
-- whether an action looked merely related to the task or actually authorized
+- What exactly did the user ask before a tool call happened?
+- What prompt-side instructions were visible to the model?
+- Which tool call was requested, dispatched, and completed?
+- Which later actions may have been influenced by earlier tool output?
+- Which action candidates should be reviewed for authorization or scope drift?
 
-`agent-logger` writes that evidence to disk in a stable session layout under `.asg/`.
+## What It Does Not Claim
 
-## Principles
+- It does not claim access to hidden model reasoning.
+- It only records evidence that is observable through the provider API, local runtime artifacts, terminal I/O, or explicit adapter hooks.
+- Derived artifacts are review aids, not ground-truth labels.
 
-- Observable only: it does not claim access to hidden model reasoning.
-- Local by default: captured data stays on disk unless you move it elsewhere.
-- Evidence first: raw event logs remain the source of truth.
-- Benchmark-oriented: derived artifacts are meant to help curation, not replace annotation.
+## Features
+
+- Session-oriented JSONL event store under `.asg/`
+- Human-readable session report rendering
+- Realtime Codex trace ingestion during live sessions
+- Tool and sub-agent event capture when exposed by the runtime
+- Benchmark-oriented authorization case extraction
+- Generic command wrapper and standalone trace proxy modes
 
 ## Install
-
-Clone the repo, then install it in editable mode:
 
 ```bash
 python3 -m venv .venv
@@ -47,7 +51,7 @@ This installs two equivalent CLI entry points:
 - `agent-logger`
 - `asg`
 
-`asg` is kept as a short compatibility alias.
+`asg` is retained as a short compatibility alias.
 
 ## Quick Start
 
@@ -57,38 +61,21 @@ Record a Codex session:
 agent-logger codex -- -a never exec "Reply with exactly OK."
 ```
 
-During the session, the tool incrementally refreshes:
-
-```text
-.asg/sessions/<session_id>/events.jsonl
-.asg/sessions/<session_id>/snapshots/codex_monitor_state.json
-.asg/sessions/<session_id>/artifacts/authz_cases.jsonl
-.asg/sessions/<session_id>/artifacts/authz_review.md
-```
-
-When the session ends, it also writes:
-
-```text
-.asg/sessions/<session_id>/artifacts/session_report.md
-```
-
-Render the latest session as a readable report:
+Render the latest session into a readable report:
 
 ```bash
 agent-logger render --latest
 ```
 
-Extract benchmark-oriented authorization cases from the latest session:
+Extract authorization-oriented review cases from the latest session:
 
 ```bash
 agent-logger extract-authz-cases --latest
 ```
 
-The more detailed Codex walkthrough is in [QUICKSTART_CODEX.md](QUICKSTART_CODEX.md).
+## Session Output
 
-## Session Layout
-
-Each run creates a session directory:
+Each run creates a directory like:
 
 ```text
 .asg/
@@ -104,23 +91,29 @@ Each run creates a session directory:
       snapshots/
 ```
 
-Key files:
+During a live `agent-logger codex ...` session, the logger incrementally refreshes:
 
-- `events.jsonl`: canonical machine-oriented log
-- `manifest.json`: top-level metadata about the run
-- `artifacts/session_report.md`: readable timeline summary
-- `artifacts/authz_cases.jsonl`: action-centered benchmark seed cases
-- `artifacts/authz_review.md`: reviewer-facing markdown summary of extracted cases
+```text
+.asg/sessions/<session_id>/events.jsonl
+.asg/sessions/<session_id>/snapshots/codex_monitor_state.json
+.asg/sessions/<session_id>/artifacts/authz_cases.jsonl
+.asg/sessions/<session_id>/artifacts/authz_review.md
+```
 
-## Supported Flows
+## Commands
 
 - `agent-logger codex`: Codex-aware adapter with provider proxying and local rollout import
 - `agent-logger run`: generic command wrapper for local agent CLIs
 - `agent-logger proxy`: standalone trace proxy
 - `agent-logger render`: render a human-readable session report
-- `agent-logger extract-authz-cases`: derive authorization benchmark seeds from raw events
+- `agent-logger extract-authz-cases`: extract benchmark-oriented authorization review cases
 
-## Status
+## Documentation
+
+- [Detailed usage guide](docs/USAGE.md)
+- [Codex quickstart](QUICKSTART_CODEX.md)
+
+## Current Status
 
 Implemented now:
 
@@ -129,26 +122,19 @@ Implemented now:
 - terminal I/O capture
 - provider request/response recording with best-effort canonicalization
 - realtime Codex rollout and history ingestion during a live session
-- Codex tool and sub-agent event capture when exposed by runtime artifacts
-- benchmark-oriented authorization case extraction
+- Codex tool and sub-agent event capture when exposed by local runtime artifacts
+- authorization case extraction for benchmark curation
 
 Not implemented yet:
 
 - first-class Claude Code adapter
-- stronger normalization of resources and actions across runtimes
-- richer reviewer workflow beyond markdown and JSONL artifacts
-- any claim of complete hidden reasoning capture
+- richer reviewer workflows beyond markdown and JSONL outputs
+- complete runtime coverage for every agent framework
 
 ## Development
 
-Run the unit tests:
+Run the test suite:
 
 ```bash
 python3 -m unittest discover -s tests -v
-```
-
-If you want a very small smoke run:
-
-```bash
-agent-logger codex -- -a never exec "Use exec_command to run pwd, then reply with exactly OK."
 ```
