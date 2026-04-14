@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-logger"
+version = "0.1.0"
+description = "Benchmark-oriented trace logger for local coding agents"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+asg = "agent_logger.cli:main"
+agent-logger = "agent_logger.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["agent_logger*"]

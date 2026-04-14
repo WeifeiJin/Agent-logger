@@ -1,0 +1,12 @@
+.asg/
+.asg_proxy_smoke/
+.codex
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.venv/
+build/
+dist/
+*.egg-info/
