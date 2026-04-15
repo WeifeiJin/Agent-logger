@@ -38,12 +38,15 @@ DEFAULT_INCLUDED_EVENT_TYPES = {
     "subagent_resumed",
     "subagent_closed",
     "final_output",
+    "claude_capture_mode",
+    "claude_session_init",
     "codex_rollout_imported",
     "codex_turn_context",
     "codex_task_started",
     "codex_task_complete",
     "codex_turn_aborted",
     "codex_context_compacted",
+    "openclaw_overlay_configured",
 }
 
 _ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
@@ -146,6 +149,20 @@ def _event_line(event: dict[str, Any]) -> str | None:
         return f"{prefix}: {_truncate(_first_nonempty(content.get('text')))}"
     if event_type == "final_output":
         return f"Final: {_truncate(_first_nonempty(content.get('text')))}"
+    if event_type == "claude_capture_mode":
+        return (
+            "Claude capture mode: "
+            f"headless={content.get('headless')} "
+            f"structured_stream={content.get('structured_stream')} "
+            f"output_format={content.get('output_format') or '?'}"
+        )
+    if event_type == "claude_session_init":
+        return (
+            "Claude session init: "
+            f"session_id={content.get('session_id') or '?'} "
+            f"cwd={content.get('cwd') or '?'} "
+            f"model={content.get('model') or '?'}"
+        )
     if event_type == "assistant_reasoning_final":
         text = _first_nonempty(content.get("text"), content.get("summary_text"))
         if content.get("has_encrypted_content") and not text:
@@ -237,6 +254,12 @@ def _event_line(event: dict[str, Any]) -> str | None:
         return f"Codex turn aborted: reason={content.get('reason') or '?'}"
     if event_type == "codex_context_compacted":
         return "Codex context compacted"
+    if event_type == "openclaw_overlay_configured":
+        return (
+            "OpenClaw overlay configured: "
+            f"proxy_enabled={content.get('proxy_enabled')} "
+            f"cache_trace_path={content.get('cache_trace_path') or '?'}"
+        )
     if event_type == "session_started":
         return f"Session started: cwd={content.get('cwd') or '?'}"
     if event_type == "session_ended":

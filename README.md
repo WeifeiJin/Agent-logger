@@ -11,7 +11,12 @@ It records observable runtime evidence for agent sessions and stores it on disk 
 - runtime-level events exposed by the agent
 - derived review artifacts for human inspection
 
-Current first-class runtime support is for Codex. The generic launcher and proxy also make it usable as a wrapper around other local agent CLIs.
+Current runtime coverage:
+
+- Codex: first-class support with realtime local artifact ingestion
+- Claude Code: dedicated adapter, with structured capture for headless `claude -p` runs
+- OpenClaw: dedicated adapter, with cache-trace capture and optional proxy-backed provider interception
+- Other CLIs: generic wrapper mode through `agent-logger run`
 
 ## What It Is For
 
@@ -34,6 +39,8 @@ Current first-class runtime support is for Codex. The generic launcher and proxy
 - Session-oriented JSONL event store under `.asg/`
 - Human-readable session report rendering
 - Realtime Codex trace ingestion during live sessions
+- Claude Code headless stream-json ingestion
+- OpenClaw cache-trace ingestion with optional proxy routing
 - Tool and sub-agent event capture when exposed by the runtime
 - Benchmark-oriented authorization case extraction
 - Generic command wrapper and standalone trace proxy modes
@@ -59,6 +66,18 @@ Record a Codex session:
 
 ```bash
 agent-logger codex -- -a never exec "Reply with exactly OK."
+```
+
+Record a Claude Code headless session:
+
+```bash
+agent-logger claude -- -p "Reply with exactly OK."
+```
+
+Record an OpenClaw session with cache-trace capture:
+
+```bash
+agent-logger openclaw -- <your-openclaw-args>
 ```
 
 Render the latest session into a readable report:
@@ -103,6 +122,8 @@ During a live `agent-logger codex ...` session, the logger incrementally refresh
 ## Commands
 
 - `agent-logger codex`: Codex-aware adapter with provider proxying and local rollout import
+- `agent-logger claude`: Claude Code adapter with headless structured capture when using `-p`
+- `agent-logger openclaw`: OpenClaw adapter with generated overlay config, cache-trace capture, and optional proxy mode
 - `agent-logger run`: generic command wrapper for local agent CLIs
 - `agent-logger proxy`: standalone trace proxy
 - `agent-logger render`: render a human-readable session report
@@ -123,13 +144,16 @@ Implemented now:
 - provider request/response recording with best-effort canonicalization
 - realtime Codex rollout and history ingestion during a live session
 - Codex tool and sub-agent event capture when exposed by local runtime artifacts
+- Claude Code structured headless capture through `--output-format stream-json`
+- Anthropic request/response/stream canonicalization
+- OpenClaw cache-trace ingestion and optional proxy-backed provider routing
 - authorization case extraction for benchmark curation
 
-Not implemented yet:
+Important limitations:
 
-- first-class Claude Code adapter
-- richer reviewer workflows beyond markdown and JSONL outputs
-- complete runtime coverage for every agent framework
+- Claude Code interactive TUI sessions are currently recorded at the terminal level; structured event capture is best on headless `claude -p` runs.
+- OpenClaw structured capture relies on generated overlay config and cache-trace output. Proxy mode is optional and requires explicit `--upstream-url`, `--provider-api`, and `--model-id`.
+- Different runtimes expose different amounts of internal state; `agent-logger` only captures what is locally observable.
 
 ## Development
 

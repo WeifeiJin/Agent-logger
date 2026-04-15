@@ -7,9 +7,11 @@ import sys
 import time
 
 from .authz_cases import build_authz_cases, generate_authz_case_artifacts, render_authz_review, serialize_authz_cases
+from .claude_adapter import run_claude_session
 from .codex_adapter import run_codex_session
 from .ids import make_session_id, make_trace_id
 from .launcher import LaunchConfig, launch_session
+from .openclaw_adapter import OpenClawProxyConfig, run_openclaw_session
 from .proxy import EmbeddedTraceProxy, ProxySettings
 from .render import build_session_report, resolve_session_dir
 from .schema import ActorRef, TargetRef, Visibility, make_event
@@ -49,6 +51,47 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Override the upstream base URL instead of using the active Codex provider config",
     )
     codex_parser.add_argument("codex_args", nargs=argparse.REMAINDER)
+
+    claude_parser = subparsers.add_parser("claude", help="Wrap Claude Code with structured headless capture when possible")
+    claude_parser.add_argument("--root", default=".asg", help="Logger root directory")
+    claude_parser.add_argument("--cwd", default=".", help="Working directory for Claude Code")
+    claude_parser.add_argument(
+        "--structured-output",
+        choices=("auto", "on", "off"),
+        default="auto",
+        help="For headless `claude -p` runs, auto-add and parse `--output-format stream-json` when possible",
+    )
+    claude_parser.add_argument("claude_args", nargs=argparse.REMAINDER)
+
+    openclaw_parser = subparsers.add_parser("openclaw", help="Wrap OpenClaw with cache-trace capture and optional proxy routing")
+    openclaw_parser.add_argument("--root", default=".asg", help="Logger root directory")
+    openclaw_parser.add_argument("--cwd", default=".", help="Working directory for OpenClaw")
+    openclaw_parser.add_argument(
+        "--upstream-url",
+        default=None,
+        help="Optional upstream provider base URL for embedded proxy mode",
+    )
+    openclaw_parser.add_argument(
+        "--provider-api",
+        default=None,
+        help="Provider API family for proxy mode, for example anthropic-messages or openai-responses",
+    )
+    openclaw_parser.add_argument(
+        "--model-id",
+        default=None,
+        help="Model id to route through the proxy-backed OpenClaw provider",
+    )
+    openclaw_parser.add_argument(
+        "--provider-id",
+        default="agent_logger_proxy",
+        help="Provider id to use inside the generated OpenClaw overlay config",
+    )
+    openclaw_parser.add_argument(
+        "--api-key-env",
+        default=None,
+        help="Optional API key env var name to reference in the generated OpenClaw overlay config",
+    )
+    openclaw_parser.add_argument("openclaw_args", nargs=argparse.REMAINDER)
 
     proxy_parser = subparsers.add_parser("proxy", help="Run a standalone trace proxy")
     proxy_parser.add_argument("--session-id", default=None, help="Existing or new session id")
@@ -110,6 +153,34 @@ def _cmd_codex(args: argparse.Namespace) -> int:
         user_args=codex_args,
         enable_proxy=not args.no_proxy,
         upstream_url=args.upstream_url,
+    )
+    return result.exit_code
+
+
+def _cmd_claude(args: argparse.Namespace) -> int:
+    claude_args = _strip_remainder_delimiter(args.claude_args)
+    result = run_claude_session(
+        root=Path(args.root),
+        cwd=Path(args.cwd).resolve(),
+        user_args=claude_args,
+        structured_output=args.structured_output,
+    )
+    return result.exit_code
+
+
+def _cmd_openclaw(args: argparse.Namespace) -> int:
+    openclaw_args = _strip_remainder_delimiter(args.openclaw_args)
+    result = run_openclaw_session(
+        root=Path(args.root),
+        cwd=Path(args.cwd).resolve(),
+        user_args=openclaw_args,
+        proxy=OpenClawProxyConfig(
+            upstream_url=args.upstream_url,
+            provider_api=args.provider_api,
+            model_id=args.model_id,
+            provider_id=args.provider_id,
+            api_key_env=args.api_key_env,
+        ),
     )
     return result.exit_code
 
@@ -257,6 +328,10 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_run(args)
     if args.command == "codex":
         return _cmd_codex(args)
+    if args.command == "claude":
+        return _cmd_claude(args)
+    if args.command == "openclaw":
+        return _cmd_openclaw(args)
     if args.command == "proxy":
         return _cmd_proxy(args)
     if args.command == "render":

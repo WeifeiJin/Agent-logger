@@ -6,6 +6,7 @@ from agent_logger.canonicalize import (
     canonicalize_request,
     canonicalize_response,
     canonicalize_response_stream,
+    canonicalize_claude_sdk_message,
     parse_sse_events,
 )
 
@@ -84,6 +85,46 @@ class CanonicalizeTest(unittest.TestCase):
             ["assistant_reasoning_final", "tool_call_requested", "assistant_text_final"],
         )
 
+    def test_anthropic_request_with_tool_result(self) -> None:
+        events = canonicalize_request(
+            {
+                "anthropic-version": "2023-06-01",
+                "model": "claude-test",
+                "system": [{"type": "text", "text": "stay scoped"}],
+                "messages": [
+                    {"role": "user", "content": [{"type": "text", "text": "list files"}]},
+                    {
+                        "role": "assistant",
+                        "content": [
+                            {"type": "thinking", "thinking": "inspect repo"},
+                            {"type": "tool_use", "id": "toolu_1", "name": "bash", "input": {"cmd": "ls"}},
+                        ],
+                    },
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "tool_result", "tool_use_id": "toolu_1", "content": "file_a\nfile_b"},
+                        ],
+                    },
+                ],
+            },
+            session_id="sess_anthropic_req",
+            platform="claude_code",
+            parent_event_id="evt_req",
+        )
+        self.assertEqual(
+            [event.event_type for event in events],
+            [
+                "request_system_message",
+                "request_user_message",
+                "assistant_reasoning_final",
+                "tool_call_requested",
+                "tool_call_result_attached",
+            ],
+        )
+        self.assertEqual(events[3].content["tool_name"], "bash")
+        self.assertEqual(events[4].content["tool_call_id"], "toolu_1")
+
     def test_responses_sse_stream(self) -> None:
         stream = (
             "event: response.output_text.delta\n"
@@ -107,6 +148,73 @@ class CanonicalizeTest(unittest.TestCase):
             ["assistant_text_delta", "assistant_text_final", "tool_call_requested"],
         )
         self.assertEqual(events[2].content["arguments"]["cmd"], "pytest")
+
+    def test_anthropic_response_stream(self) -> None:
+        stream = (
+            "event: message_start\n"
+            "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_1\",\"model\":\"claude-test\"}}\n\n"
+            "event: content_block_start\n"
+            "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"inspect\"}}\n\n"
+            "event: content_block_stop\n"
+            "data: {\"type\":\"content_block_stop\",\"index\":0}\n\n"
+            "event: content_block_start\n"
+            "data: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"bash\"}}\n\n"
+            "event: content_block_delta\n"
+            "data: {\"type\":\"content_block_delta\",\"index\":1,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"cmd\\\":\\\"ls\\\"}\"}}\n\n"
+            "event: content_block_stop\n"
+            "data: {\"type\":\"content_block_stop\",\"index\":1}\n\n"
+            "event: content_block_start\n"
+            "data: {\"type\":\"content_block_start\",\"index\":2,\"content_block\":{\"type\":\"text\",\"text\":\"done\"}}\n\n"
+            "event: content_block_stop\n"
+            "data: {\"type\":\"content_block_stop\",\"index\":2}\n\n"
+        )
+        events = canonicalize_response_stream(
+            stream,
+            session_id="sess_anthropic_stream",
+            platform="claude_code",
+            parent_event_id="evt_stream",
+        )
+        self.assertEqual(
+            [event.event_type for event in events],
+            ["assistant_reasoning_final", "tool_call_requested", "assistant_text_final"],
+        )
+        self.assertEqual(events[1].content["arguments"]["cmd"], "ls")
+
+    def test_canonicalize_claude_sdk_message(self) -> None:
+        events = canonicalize_claude_sdk_message(
+            {
+                "type": "assistant",
+                "message": {
+                    "role": "assistant",
+                    "content": [
+                        {"type": "thinking", "thinking": "inspect"},
+                        {"type": "tool_use", "id": "toolu_1", "name": "bash", "input": {"cmd": "pwd"}},
+                        {"type": "text", "text": "done"},
+                    ],
+                },
+            },
+            session_id="sess_claude_sdk",
+            parent_event_id="evt_sdk",
+        )
+        self.assertEqual(
+            [event.event_type for event in events],
+            ["assistant_reasoning_final", "tool_call_requested", "assistant_text_final"],
+        )
+        tool_result_events = canonicalize_claude_sdk_message(
+            {
+                "type": "user",
+                "message": {
+                    "role": "user",
+                    "content": [
+                        {"type": "tool_result", "tool_use_id": "toolu_1", "content": "pwd-output"},
+                    ],
+                },
+            },
+            session_id="sess_claude_sdk",
+            parent_event_id="evt_sdk_result",
+        )
+        self.assertEqual([event.event_type for event in tool_result_events], ["tool_call_result"])
+        self.assertEqual(tool_result_events[0].content["tool_call_id"], "toolu_1")
 
     def test_responses_request_with_tool_result(self) -> None:
         events = canonicalize_request(
